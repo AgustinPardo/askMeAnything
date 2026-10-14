@@ -6,7 +6,7 @@
 #
 #   docker run -p 7860:7860 \
 #     -e OLLAMA_API_KEY=<key> \
-#     -e SPRING_PROFILES_ACTIVE=prod,cloud \
+#     -e SPRING_PROFILES_ACTIVE=prod \
 #     ama-ollama-cloud:latest
 #
 # Notes for Render:
@@ -16,48 +16,33 @@
 set -euo pipefail
 
 APP_HOME="${APP_HOME:-/app}"
-# prod: container wiring / ports / MCP   |   cloud: chat via Ollama's hosted API
-export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-prod,cloud}"
+export SPRING_PROFILES_ACTIVE="${SPRING_PROFILES_ACTIVE:-prod}"
 export OLLAMA_CHAT_MODEL="${OLLAMA_CHAT_MODEL:-gemma4:31b}"
 export PORT="${PORT:-7860}"
 METEORO_PORT="${METEORO_PORT:-8081}"
+LOG_DIR="${LOG_DIR:-/tmp/ama}"
 
-mkdir -p /tmp/ama
+mkdir -p "${LOG_DIR}"
 log() { echo "[entrypoint] $*"; }
 
 # --------------------------------------------------------------------------
-# 0. Ollama is only needed for local inference / embeddings.
-#    In the "cloud" profile it is not used at all, so we skip the check entirely
-#    (on Render, resolving a host name could add ~60s of DNS retries).
+# 0. Chat goes to Ollama's hosted API (profile prod), so no local Ollama is needed.
 # --------------------------------------------------------------------------
-case ",${SPRING_PROFILES_ACTIVE}," in
-    *,cloud,*)
-        export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
-        log "profile: ${SPRING_PROFILES_ACTIVE} (chat via Ollama cloud API)"
-        log "chat model: ${OLLAMA_CHAT_MODEL}"
-        if [ -z "${OLLAMA_API_KEY:-}" ]; then
-            log "WARNING: OLLAMA_API_KEY is not set - cloud chat calls will fail (401)."
-            log "         Create one at https://ollama.com/settings/keys"
-        fi
-        log "RAG: disabled in cloud mode (the hosted API has no embeddings endpoint)."
-        ;;
-    *)
-        export OLLAMA_BASE_URL="${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
-        log "Ollama endpoint: ${OLLAMA_BASE_URL}"
-        if curl -sf "${OLLAMA_BASE_URL}/api/tags" >/dev/null 2>&1; then
-            log "Ollama is reachable."
-        else
-            log "WARNING: ${OLLAMA_BASE_URL} is not reachable right now."
-            log "         Start Ollama on the host, or pass the right OLLAMA_BASE_URL."
-        fi
-        ;;
-esac
+log "profile: ${SPRING_PROFILES_ACTIVE} (chat via Ollama cloud API)"
+log "chat model: ${OLLAMA_CHAT_MODEL}"
+if [ -z "${OLLAMA_API_KEY:-}" ]; then
+    log "WARNING: OLLAMA_API_KEY is not set - cloud chat calls will fail (401)."
+    log "         Create one at https://ollama.com/settings/keys"
+fi
+log "RAG: disabled in this profile (the hosted API has no embeddings endpoint)."
+log "logs: ${LOG_DIR} (also served by /api/logs/ama and /api/logs/meteoro)"
 
 # --------------------------------------------------------------------------
 # 1. AMA first: it owns the public port
 # --------------------------------------------------------------------------
-log "starting AMA on :${PORT} (profile ${SPRING_PROFILES_ACTIVE})..."
-java ${JAVA_OPTS:-} -jar "${APP_HOME}/ama.jar" --server.port="${PORT}" >/tmp/ama/ama.log 2>&1 &
+log "starting AMA on :${PORT}..."
+java ${JAVA_OPTS:-} -jar "${APP_HOME}/ama.jar" --server.port="${PORT}" \
+    --log-dir="${LOG_DIR}" >"${LOG_DIR}/ama.log" 2>&1 &
 AMA_PID=$!
 
 # Wait until the public port answers before starting anything else, so Render's
@@ -76,12 +61,13 @@ for _ in $(seq 1 120); do
 done
 
 # --------------------------------------------------------------------------
-# 2. Meteoro MCP server - loopback only, so Render never sees port 8081
+# 2. Meteoro MCP server - loopback only, so Render never sees port 8081.
+#    'tee' makes its output show up in BOTH the Render log stream and the file.
 # --------------------------------------------------------------------------
 log "starting Meteoro MCP server on 127.0.0.1:${METEORO_PORT} (internal)..."
 java ${JAVA_OPTS_METEORO:-} -jar "${APP_HOME}/meteoro-mcp-server.jar" \
     --server.port="${METEORO_PORT}" --server.address=127.0.0.1 \
-    >/tmp/ama/meteoro.log 2>&1 &
+    2>&1 | tee "${LOG_DIR}/meteoro.log" &
 METEORO_PID=$!
 
 cleanup() {
