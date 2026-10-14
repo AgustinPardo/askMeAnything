@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Ask Me Anything</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background: #f5f6fa;
+            color: #222;
+        }
+        .card {
+            max-width: 760px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+        }
+        h1 { margin-top: 0; }
+        label.field-label { display: block; margin-bottom: 0.4rem; font-weight: 600; }
+        textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ccd1e0;
+            border-radius: 8px;
+            font: inherit;
+            resize: vertical;
+        }
+        textarea:focus { outline: none; border-color: #4f46e5; }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin: 1.25rem 0;
+        }
+        .action-option { position: relative; }
+        .action-option input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .action-btn {
+            display: inline-block;
+            padding: 0.6rem 1.1rem;
+            border: 2px solid #ccd1e0;
+            border-radius: 999px;
+            cursor: pointer;
+            user-select: none;
+            font-weight: 600;
+            transition: all 0.15s ease;
+            background: #fff;
+            color: #222;
+        }
+        .action-option input[type="radio"]:checked + .action-btn {
+            border-color: #4f46e5;
+            background: #4f46e5;
+            color: #fff;
+        }
+        .action-option input[type="radio"]:focus + .action-btn {
+            box-shadow: 0 0 0 3px rgba(79,70,229,0.25);
+        }
+        .action-desc {
+            display: block;
+            max-width: 150px;
+            margin-top: 0.4rem;
+            font-size: 0.75rem;
+            color: #555;
+            line-height: 1.2;
+        }
+
+        .apply-btn {
+            background: #4f46e5;
+            color: #fff;
+            border: none;
+            padding: 0.7rem 1.4rem;
+            border-radius: 8px;
+            font: inherit;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .apply-btn:hover { background: #3730a3; }
+
+        .response-box { margin-top: 2rem; }
+        .response-box textarea { background: #f8fafc; }
+    </style>
+</head>
+<body>
+<div class="card">
+    <h1>Ask Me Anything</h1>
+
+    <form th:action="@{/ask}" method="post" th:object="${promptForm}">
+        <label for="prompt" class="field-label">Prompt</label>
+        <textarea id="prompt" name="prompt" th:field="*{prompt}"
+                  rows="6" cols="60" placeholder="Enter your prompt..." required></textarea>
+
+        <p class="field-label" style="margin-top:1.25rem;">Choose an action (pick one)</p>
+        <div class="actions">
+            <div class="action-option" th:each="act : ${actions}">
+                <input type="radio" th:id="${'action-' + act}" name="action"
+                       th:value="${act}" th:field="*{action}" required/>
+                <label th:for="${'action-' + act}" class="action-btn" th:text="${act}">Action</label>
+                <small class="action-desc" th:switch="${act}">
+                    <span th:case="'Free'">Best for open, general questions; no tools, no lookup.</span>
+                    <span th:case="'Tools Calling'">Try: “What time is it?” or “What day is today?”</span>
+                    <span th:case="'RAG'">Try: “What modes does this app have?” or “How do I run tests?”</span>
+                    <span th:case="'GitHub MCP'">Try: “Search repositories for spring-ai” or “Get file contents for owner/repo:README.md”.</span>
+                    <span th:case="'Meteoro MCP'">Try: “How long did each Meteoro race take?” or “Who won R2 and what was the weather?”</span>
+                    <span th:case="*">Ask anything; response depends on the selected mode.</span>
+                </small>
+            </div>
+        </div>
+
+        <button type="submit" class="apply-btn">Apply</button>
+    </form>
+
+    <div class="response-box">
+        <label for="response" class="field-label">Response</label>
+        <textarea id="response" rows="8" cols="60" readonly
+                  th:text="${response}"></textarea>
+    </div>
+</div>
+</body>
+</html>

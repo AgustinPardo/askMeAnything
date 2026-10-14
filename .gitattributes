@@ -1,0 +1,7 @@
+# Keep shell scripts with LF, Windows launchers with CRLF
+mvnw text eol=lf
+*.cmd text eol=crlf
+
+# Binary-ish build artifacts (even if someone adds them by mistake)
+*.jar binary
+*.class binary
