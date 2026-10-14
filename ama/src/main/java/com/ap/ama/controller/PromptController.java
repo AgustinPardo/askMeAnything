@@ -6,6 +6,8 @@ import com.ap.ama.mcp.MeteoroMcpService;
 import com.ap.ama.tools.GitHubMcpTools;
 import com.ap.ama.tools.TimeTools;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.tool.ToolCallback;
@@ -20,6 +22,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 
 @Controller
 public class PromptController {
+
+    private static final Logger log = LoggerFactory.getLogger(PromptController.class);
 
     private static final List<String> ACTIONS =
             List.of("Free", "Tools Calling", "RAG", "GitHub MCP", "Meteoro MCP");
@@ -63,6 +67,8 @@ public class PromptController {
         String response;
         String action = promptForm.getAction();
         String prompt = promptForm.getPrompt();
+        long startedAt = System.currentTimeMillis();
+        log.info("ask action={} prompt={}", action, prompt);
         try {
             if ("Free".equalsIgnoreCase(action)) {
                 response = chatClient.prompt()
@@ -91,7 +97,11 @@ public class PromptController {
             }
         } catch (Exception e) {
             response = "Error: " + e.getMessage();
+            log.info("ask action={} failed after {} ms: {}", action,
+                    System.currentTimeMillis() - startedAt, e.getMessage());
         }
+        log.info("ask action={} answer ({} ms)={}", action,
+                System.currentTimeMillis() - startedAt, response);
         model.addAttribute("response", response);
         model.addAttribute("promptForm", promptForm);
         return "index";
