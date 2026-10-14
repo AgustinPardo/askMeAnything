@@ -1,0 +1,9 @@
+# The Docker build only COPYs pom.xml + src from each module, so this file only
+# needs to keep the build context small and secrets out of the image.
+
+# Build output (keeps ~75 MB of jars out of every build)
+**/target/
+
+# Secrets - never bake these into an image
+**/application-local.properties
+**/.env

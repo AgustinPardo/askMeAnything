@@ -1,0 +1,16 @@
+# Build output
+**/target/
+
+# Nested git repo: ama has its own repo, the deployment context is this folder
+ama/.git/
+
+# Secrets
+**/application-local.properties
+**/.env
+
+# IDE
+**/.idea/
+**/.vscode/
+
+# Logs
+*.log

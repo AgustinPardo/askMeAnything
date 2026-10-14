@@ -1,0 +1,69 @@
+# syntax=docker/dockerfile:1
+#
+# Lean image for using an EXTERNAL Ollama server (host Ollama app / sidecar).
+# No Ollama binary and no models are shipped here, which keeps the image small.
+#
+#   docker build -f Dockerfile.host-ollama -t ama-ollama-cloud:latest .
+#   docker run -d -p 7860:7860 \
+#     -e OLLAMA_BASE_URL=http://host.docker.internal:11434 \
+#     -e OLLAMA_CHAT_MODEL=gemma4:31b-cloud \
+#     --add-host=host.docker.internal:host-gateway \
+#     ama-ollama-cloud:latest
+#
+# ---------------------------------------------------------------------------
+FROM maven:3.9-eclipse-temurin-21 AS builder
+
+WORKDIR /build
+
+# Build ama
+COPY ama/pom.xml ./ama/pom.xml
+COPY ama/src ./ama/src
+RUN mvn -B -q -f ama/pom.xml -DskipTests dependency:go-offline || true
+RUN mvn -B -q -f ama/pom.xml -DskipTests package
+
+# Build meteoro-mcp-server
+COPY meteoro-mcp-server/pom.xml ./meteoro-mcp-server/pom.xml
+COPY meteoro-mcp-server/src ./meteoro-mcp-server/src
+RUN mvn -B -q -f meteoro-mcp-server/pom.xml -DskipTests dependency:go-offline || true
+RUN mvn -B -q -f meteoro-mcp-server/pom.xml -DskipTests package
+
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jre-jammy AS runtime
+
+ARG GITHUB_MCP_VERSION=v2.0.2
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    APP_HOME=/app \
+    SPRING_PROFILES_ACTIVE=prod
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates tar \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- GitHub MCP server binary (spawned by AMA over stdio) -------------------
+# Release assets use Go arch names (x86_64 / arm64); Debian uses amd64 / arm64.
+RUN set -eux; \
+    case "$(dpkg --print-architecture)" in \
+      amd64) goarch="x86_64" ;; \
+      arm64) goarch="arm64" ;; \
+      *) echo "unsupported architecture"; exit 1 ;; \
+    esac; \
+    mkdir -p "${APP_HOME}/bin"; \
+    curl -fsSL -o /tmp/github-mcp.tgz \
+      "https://github.com/github/github-mcp-server/releases/download/${GITHUB_MCP_VERSION}/github-mcp-server_Linux_${goarch}.tar.gz"; \
+    tar -xzf /tmp/github-mcp.tgz -C "${APP_HOME}/bin" github-mcp-server; \
+    chmod +x "${APP_HOME}/bin/github-mcp-server"; \
+    rm -f /tmp/github-mcp.tgz
+
+# --- Application jars ------------------------------------------------------
+COPY --from=builder /build/ama/target/ama-*.jar            ${APP_HOME}/ama.jar
+COPY --from=builder /build/meteoro-mcp-server/target/meteoro-mcp-server.jar ${APP_HOME}/meteoro-mcp-server.jar
+COPY entrypoint-host-ollama.sh ${APP_HOME}/entrypoint.sh
+RUN chmod +x ${APP_HOME}/entrypoint.sh
+
+EXPOSE 7860
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT:-7860}/" >/dev/null || exit 1
+
+ENTRYPOINT ["/app/entrypoint.sh"]
