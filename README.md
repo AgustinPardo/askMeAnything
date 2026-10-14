@@ -2,6 +2,9 @@
 
 A Spring AI playground: one web page, five ways to talk to a model.
 
+**Live demo:** https://ama-ollama-cloud.onrender.com/ — hosted on Render (the free instance
+sleeps, so the first load can take a few seconds).
+
 | Mode | What it does |
 |---|---|
 | **Free** | Plain chat with the model |
